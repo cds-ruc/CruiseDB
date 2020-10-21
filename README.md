@@ -18,4 +18,4 @@ rate_estimater.cc
 
 Some parameters need to be set according to system ability in rate_estimater.h and rate_estimater.cc
 
-This is a work of Key Laboratory of DEKE, MOE, China from School of Information, Renmin University of China
+This is work of Key Laboratory of DEKE, MOE, China from School of Information, Renmin University of China
