@@ -27,15 +27,6 @@ class RateEstimater {
 		}
 
 	private:
-		struct speed{
-			constexpr static double RAPID_GROW = ,
-				QUICK_GROW = ,
-				GROW = ,
-				KEEP = ,
-				SLOW_DECLINE = ,
-				DECLINE = ,
-				QUICK_DECLINE = ;
-		};
 		long long ColdBegin();
 		long long LimitedSpeed();
 
@@ -50,9 +41,9 @@ class RateEstimater {
 			double score[8];
 			long long rate;
 			long long last;
-			int reason;
+			double ratio;
 
-			Record():time(0),rate(0),last(0),reason(-1) {
+			Record():time(0),rate(0),last(0),ratio(-1) {
 				for(int i=0;i<8;++i)score[i]=0;
 			}
 
@@ -64,6 +55,8 @@ class RateEstimater {
 				return ret;
 			}
 		};
+
+		double k1=0.5,k2=0.4;
 
 		ColumnFamilyData* cfd_;
 		DBImpl* db_handle_;

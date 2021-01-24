@@ -8,7 +8,7 @@
 
 namespace rocksdb {
 
-#define TUNE_PERIOD 100000
+#define TUNE_PERIOD 300000
 
 TokenBucket::TokenBucket(ColumnFamilyData* cfd,
                          long long rate_bytes_per_sec,
@@ -79,7 +79,9 @@ void TokenBucket::Begin(int code, DBImpl* db_handle) {
   assert(valid_ == code - 1);
   std::cout<<"TokenBucket\t"<<cfd_->GetName()<<"\tBegin\t"<<code<<std::endl;
   valid_ = code;
-  if (valid_ >= 2 && rate_estimater_) {
+  if (valid_ >= 3) {
+    assert(false);
+  } else if (valid_ >= 2 && rate_estimater_) {
     rate_estimater_->SetDBHandle(db_handle);
     SetBytesPerSecond(rate_estimater_->Estimate(-1));
     tune_time_ = NowTime();

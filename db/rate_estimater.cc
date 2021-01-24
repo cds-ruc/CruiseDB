@@ -11,10 +11,12 @@
 
 #define MAX_RECORDS 100000
 #define MIN_INTERVAL 1000000
-#define MIN_START_RATE 
-#define DISK_RATE 
-#define DEFAULT_LIMITED_SPEED 
-#define MAX_LIMITED_SPEED 
+#define MIN_START_RATE
+#define DISK_RATE
+#define DEFAULT_LIMITED_SPEED
+#define MAX_LIMITED_SPEED
+#define MIN_TUNE_RATIO 0.5
+#define MAX_TUNE_RATIO 1.5
 
 namespace rocksdb {
 
@@ -24,12 +26,18 @@ RateEstimater::RateEstimater(ColumnFamilyData* cfd)
   : cfd_(cfd), db_handle_(nullptr), now_rate_(-1), read_bytes_(0), write_bytes_(0), read_time_(0), write_time_(0) {
 	  std::cout<<"RateEstimater\t"<<cfd_->GetName()<<std::endl;
 	  re_statistics = new StatisticsImpl(nullptr);
+	//   std::cout<<"Getting Parameters k1 k2:"<<std::endl;
+	//   std::cin >> k1 >> k2;
+	  std::cout<<"Parameters:\n\tk1:\t"<<k1<<"\tk2:\t"<<k2<<std::endl;
   }
 
 RateEstimater::RateEstimater(ColumnFamilyData* cfd, long long initial_rate)
   : cfd_(cfd), db_handle_(nullptr), now_rate_(initial_rate), read_bytes_(0), write_bytes_(0), read_time_(0), write_time_(0) {
 	  std::cout<<"RateEstimater\t"<<cfd_->GetName()<<std::endl;
 	  re_statistics = new StatisticsImpl(nullptr);
+	//   std::cout<<"Getting Parameters k1 k2:"<<std::endl;
+	//   std::cin >> k1 >> k2;
+	  std::cout<<"Parameters:\n\tk1:\t"<<k1<<"\tk2:\t"<<k2<<std::endl;
   }
 
 RateEstimater::~RateEstimater(){
@@ -39,11 +47,13 @@ RateEstimater::~RateEstimater(){
 	std::cout<<"Records:"<<std::endl;
 	for(unsigned i=0;i<records_.size();++i) {
 		time_t time_time_t = records_[i].time/1000000;
-		std::string time_str(asctime(localtime(&time_time_t)));
+		char buf[128];
+		strftime(buf, 127, "%T", localtime(&time_time_t));
+		std::string time_str(buf);
 		time_str += "." + std::to_string(records_[i].time%1000000);
 		std::cout<<"Time:\t"<<time_str<<"\tScore:\t[ ";
 		for(unsigned j=0;j<6;++j)std::cout<<records_[i].score[j]<<" ";
-		std::cout<<"]\tRate:\t"<<records_[i].rate/1024.0/1024.0<<"MB/s\tLast:\t"<<records_[i].last/1024.0/1024.0<<"MB/s\tReason:\t"<<records_[i].reason<<std::endl;
+		std::cout<<"]\tMax Score:\t"<<records_[i].max_score()<<"\tRate:\t"<<records_[i].rate/1024.0/1024.0<<"MB/s\tLast:\t"<<records_[i].last/1024.0/1024.0<<"MB/s\tRatio:\t"<<records_[i].ratio<<std::endl;
 	}
 }
 
@@ -64,7 +74,7 @@ long long RateEstimater::Estimate(double last_rate) {
 	if (now_rate_ < 0) now_rate_ = ColdBegin();
 	rec.rate = now_rate_;
 	rec.last = LimitedSpeed();
-	rec.reason = 0;
+	rec.ratio = 0;
 	records_.push_back(rec);
 	cfd_->internal_stats()->Clear();
 	return now_rate_;
@@ -89,7 +99,7 @@ long long RateEstimater::Estimate(double last_rate) {
 	//Strategy
 	now_rate_ = last_rate;
 
-	if (new_rec.max_score()>last_rec.max_score()+1){
+/* 	if (new_rec.max_score()>last_rec.max_score()+1){
 		now_rate_ = LimitedSpeed();
 		new_rec.reason = 1;
 	} else if (new_rec.score[0]<2) {
@@ -126,7 +136,28 @@ long long RateEstimater::Estimate(double last_rate) {
 	} else {
 		now_rate_ = LimitedSpeed();
 		new_rec.reason = 11;
+	} */
+
+	double ratio=1.0;
+
+	if (new_rec.score[0]>3) {
+		now_rate_ = LimitedSpeed();
+		new_rec.ratio = -1;
+	} else if (new_rec.max_score() - last_rec.max_score() > 2) {
+		now_rate_ = LimitedSpeed();
+		new_rec.ratio = -2;
+	} else {
+		ratio = 1 - k1 * (new_rec.score[0]-1.5) / 3.0 - k2 * (new_rec.max_score() - last_rec.max_score()) / 5.0;
+		new_rec.ratio = ratio;
+		if (ratio < MIN_TUNE_RATIO) {
+			now_rate_ = LimitedSpeed();
+		} else if (ratio > MAX_TUNE_RATIO) {
+			now_rate_ = ColdBegin();
+		} else {
+			now_rate_ = now_rate_ * ratio;
+		}
 	}
+	
 	//
 	new_rec.rate=now_rate_;
 	while(records_.size() >= MAX_RECORDS) {
@@ -169,6 +200,7 @@ long long RateEstimater::ColdBegin() {
 }
 
 long long RateEstimater::LimitedSpeed() {
+	std::cout<<"LimitedSpeed Called!"<<std::endl;
 	long long disk_rate = DISK_RATE;
 	assert(re_statistics);
 	long long cache_write = re_statistics->getTickerCount(BLOCK_CACHE_BYTES_WRITE);
@@ -200,6 +232,7 @@ long long RateEstimater::LimitedSpeed() {
 		coff += write_ratio*comp_read/write_bytes_ + write_ratio*comp_write/write_bytes_;
 	}
 	long long ret = disk_rate/coff;
+	std::cout<<"LimitedSpeed Result:\t"<<(ret>>20)<<"MB/s"<<std::endl;
 	if (ret > MAX_LIMITED_SPEED) ret = MAX_LIMITED_SPEED;
 	return ret;
 }
